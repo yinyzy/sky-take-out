@@ -4,6 +4,9 @@ import com.aliyun.oss.ClientException;
 import com.aliyun.oss.OSS;
 import com.aliyun.oss.OSSClientBuilder;
 import com.aliyun.oss.OSSException;
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
@@ -26,43 +29,71 @@ public class AliOssUtil {
      * @param objectName
      * @return
      */
+//    public String upload(byte[] bytes, String objectName) {
+//
+//        // 创建OSSClient实例。
+//        OSS ossClient = new OSSClientBuilder().build(endpoint, accessKeyId, accessKeySecret);
+//
+//        try {
+//            // 创建PutObject请求。
+//            ossClient.putObject(bucketName, objectName, new ByteArrayInputStream(bytes));
+//        } catch (OSSException oe) {
+//            System.out.println("Caught an OSSException, which means your request made it to OSS, "
+//                    + "but was rejected with an error response for some reason.");
+//            System.out.println("Error Message:" + oe.getErrorMessage());
+//            System.out.println("Error Code:" + oe.getErrorCode());
+//            System.out.println("Request ID:" + oe.getRequestId());
+//            System.out.println("Host ID:" + oe.getHostId());
+//        } catch (ClientException ce) {
+//            System.out.println("Caught an ClientException, which means the client encountered "
+//                    + "a serious internal problem while trying to communicate with OSS, "
+//                    + "such as not being able to access the network.");
+//            System.out.println("Error Message:" + ce.getMessage());
+//        } finally {
+//            if (ossClient != null) {
+//                ossClient.shutdown();
+//            }
+//        }
+//
+//        //文件访问路径规则 https://BucketName.Endpoint/ObjectName
+//        StringBuilder stringBuilder = new StringBuilder("https://");
+//        stringBuilder
+//                .append(bucketName)
+//                .append(".")
+//                .append(endpoint)
+//                .append("/")
+//                .append(objectName);
+//
+//        log.info("文件上传到:{}", stringBuilder.toString());
+//        return stringBuilder.toString();
+//    }
     public String upload(byte[] bytes, String objectName) {
 
-        // 创建OSSClient实例。
-        OSS ossClient = new OSSClientBuilder().build(endpoint, accessKeyId, accessKeySecret);
+        // 本地存储目录
+        String folderPath = "C:\\Users\\32030\\Desktop\\photo";
 
         try {
-            // 创建PutObject请求。
-            ossClient.putObject(bucketName, objectName, new ByteArrayInputStream(bytes));
-        } catch (OSSException oe) {
-            System.out.println("Caught an OSSException, which means your request made it to OSS, "
-                    + "but was rejected with an error response for some reason.");
-            System.out.println("Error Message:" + oe.getErrorMessage());
-            System.out.println("Error Code:" + oe.getErrorCode());
-            System.out.println("Request ID:" + oe.getRequestId());
-            System.out.println("Host ID:" + oe.getHostId());
-        } catch (ClientException ce) {
-            System.out.println("Caught an ClientException, which means the client encountered "
-                    + "a serious internal problem while trying to communicate with OSS, "
-                    + "such as not being able to access the network.");
-            System.out.println("Error Message:" + ce.getMessage());
-        } finally {
-            if (ossClient != null) {
-                ossClient.shutdown();
+            // 1️⃣ 确保目录存在
+            File folder = new File(folderPath);
+            if (!folder.exists()) {
+                folder.mkdirs();
             }
+
+            // 2️⃣ 创建文件
+            File file = new File(folderPath + "\\" + objectName);
+
+            // 3️⃣ 写入文件
+            FileOutputStream fos = new FileOutputStream(file);
+            fos.write(bytes);
+            fos.close();
+
+            log.info("文件上传成功，本地路径: {}", file.getAbsolutePath());
+
+            return file.getAbsolutePath();
+
+        } catch (IOException e) {
+            log.error("本地文件上传失败", e);
+            throw new RuntimeException("文件上传失败");
         }
-
-        //文件访问路径规则 https://BucketName.Endpoint/ObjectName
-        StringBuilder stringBuilder = new StringBuilder("https://");
-        stringBuilder
-                .append(bucketName)
-                .append(".")
-                .append(endpoint)
-                .append("/")
-                .append(objectName);
-
-        log.info("文件上传到:{}", stringBuilder.toString());
-
-        return stringBuilder.toString();
     }
 }
