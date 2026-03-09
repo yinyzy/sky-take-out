@@ -67,5 +67,15 @@ public class DishController {
         List<Dish> list = dishService.list(categoryId);
         return Result.success(list);
     }
+    @PostMapping("/status/{status}")
+    @ApiOperation("修改菜品状态")
+    public Result status(@PathVariable Integer status, @RequestParam Long id) {
+        log.info("修改菜品状态：菜品id={}, 状态={}", id, status);
+
+        // 调用service层处理业务逻辑
+        dishService.updateStatus(status, id);
+
+        return Result.success();
+    }
 
 }

@@ -149,6 +149,17 @@ public class DishServiceImpl implements DishService {
         return dishVOList;
     }
 
+    @Override
+    public void updateStatus(Integer status, Long id) {
+        // 创建Dish对象
+        Dish dish = Dish.builder()
+                .id(id)
+                .status(status)
+                .build();
+
+        // 调用Mapper更新状态
+        dishMapper.update(dish);
+    }
 
 
 }
