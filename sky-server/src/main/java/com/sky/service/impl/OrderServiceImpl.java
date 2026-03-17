@@ -158,6 +158,19 @@ public class OrderServiceImpl implements OrderService {
         return orderMapper.getByNumber(orderNumber);
     }
 
+    @Override
+    public void reminder(Long id) {
+        Orders order = orderMapper.getById(id);
+        if (order == null) throw new OrderBusinessException("订单不存在");
+
+        Map<String, Object> map = new HashMap<>();
+        map.put("type", 2);
+        map.put("orderId", id);
+        map.put("content", "订单号：" + order.getNumber());
+        String json= JSON.toJSONString(map);
+        webSocketServer.sendToAllClient(json);
+    }
+
     /**
      * 支付成功，修改订单状态
      *

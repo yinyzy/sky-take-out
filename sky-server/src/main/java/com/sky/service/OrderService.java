@@ -31,4 +31,6 @@ public interface OrderService {
      * 根据订单号查询订单
      */
     Orders getByOrderNumber(String orderNumber);
+
+    void reminder(Long id);
 }
