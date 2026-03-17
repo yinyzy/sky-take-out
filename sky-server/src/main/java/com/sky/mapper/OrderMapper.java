@@ -19,11 +19,17 @@ public interface OrderMapper {
 
     /**
      * 修改订单信息
+     *
      * @param orders
+     * @return
      */
-    void update(Orders orders);
+    int update(Orders orders);
 
     @Select("select * from orders where status=#{status} and order_time<#{orderTime}")
     List<Orders> getByStatusAndOrderTimeLT(Integer status, LocalDateTime orderTime);
 
+    int updateSelective(Orders updateParam, String s);
+
+    @Select("select * from orders where id = #{id}")
+    Orders getById(Long id);
 }

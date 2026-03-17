@@ -1,5 +1,6 @@
 package com.sky.service.impl;
 
+import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
 import com.sky.constant.MessageConstant;
 import com.sky.context.BaseContext;
@@ -14,6 +15,7 @@ import com.sky.service.OrderService;
 import com.sky.utils.WeChatPayUtil;
 import com.sky.vo.OrderPaymentVO;
 import com.sky.vo.OrderSubmitVO;
+import com.sky.websocket.WebSocketServer;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -42,6 +44,8 @@ public class OrderServiceImpl implements OrderService {
     private WeChatPayUtil weChatPayUtil;
     @Autowired
     private UserMapper userMapper;
+    @Autowired
+    private WebSocketServer  webSocketServer;
 
     @Override
     @Transactional
@@ -92,8 +96,17 @@ public class OrderServiceImpl implements OrderService {
      * 订单支付 - 模拟支付
      */
     public OrderPaymentVO payment(OrdersPaymentDTO ordersPaymentDTO) throws Exception {
-        log.info("模拟支付，订单号：{}", ordersPaymentDTO.getOrderNumber());
 
+
+        Orders existingOrder = orderMapper.getByNumber(ordersPaymentDTO.getOrderNumber());
+        if (existingOrder == null) {
+            throw new OrderBusinessException("订单不存在");
+        }
+        if (existingOrder.getPayStatus() == Orders.PAID) {
+            log.warn("订单{}已支付，拒绝重复支付请求", ordersPaymentDTO.getOrderNumber());
+            throw new OrderBusinessException("订单已支付");
+        }
+        log.info("模拟支付，订单号：{}", ordersPaymentDTO.getOrderNumber());
         // 获取当前用户
         Long userId = BaseContext.getCurrentId();
         User user = userMapper.getById(userId);
@@ -131,7 +144,12 @@ public class OrderServiceImpl implements OrderService {
      */
     @Override
     public void mockPaySuccess(String orderNumber) {
-        log.info("模拟支付回调，订单号：{}", orderNumber);
+        Orders order = orderMapper.getByNumber(orderNumber);
+        if (order == null) throw new OrderBusinessException("订单不存在");
+        if (order.getPayStatus() == Orders.PAID) {
+            log.info("订单{}已支付，跳过模拟回调", orderNumber);
+            return; // 安全退出，避免进入 paySuccess
+        }
         paySuccess(orderNumber);
     }
 
@@ -145,32 +163,65 @@ public class OrderServiceImpl implements OrderService {
      *
      * @param outTradeNo
      */
+    /**
+     * 支付成功，修改订单状态（幂等处理）
+     */
+    /**
+     * 支付成功，修改订单状态（幂等处理）
+     */
     public void paySuccess(String outTradeNo) {
         log.info("支付成功回调，订单号：{}", outTradeNo);
 
-        // 根据订单号查询订单
+        // 1. 查询订单
         Orders ordersDB = orderMapper.getByNumber(outTradeNo);
-
         if (ordersDB == null) {
             log.error("订单不存在，订单号：{}", outTradeNo);
             throw new OrderBusinessException("订单不存在");
         }
 
-        // 检查订单是否已支付
+        // 2. 检查订单是否已支付
         if (ordersDB.getPayStatus() == Orders.PAID) {
-            log.info("订单已支付，订单号：{}", outTradeNo);
+            log.info("订单已支付，订单号：{}，跳过处理", outTradeNo);
             return;
         }
 
-        // 根据订单id更新订单的状态、支付方式、支付状态、结账时间
-        Orders orders = Orders.builder()
+        // 3. 构建更新对象（必须包含ID）
+        Orders updateParam = Orders.builder()
                 .id(ordersDB.getId())
-                .status(Orders.TO_BE_CONFIRMED)  // 待接单状态
-                .payStatus(Orders.PAID)           // 已支付
-                .checkoutTime(LocalDateTime.now()) // 结账时间
+                .status(Orders.TO_BE_CONFIRMED)
+                .payStatus(Orders.PAID)
+                .checkoutTime(LocalDateTime.now())
                 .build();
 
-        orderMapper.update(orders);
-        log.info("订单状态更新成功，订单ID：{}，状态：待接单，支付状态：已支付", ordersDB.getId());
+        // 4. 【关键】执行更新并检查影响行数
+        int updatedRows = orderMapper.update(updateParam);
+
+        // 5. 如果更新失败（0行），说明已被其他线程处理
+        if (updatedRows == 0) {
+            Orders currentOrder = orderMapper.getById(ordersDB.getId());
+            if (currentOrder != null && currentOrder.getPayStatus() == Orders.PAID) {
+                log.warn("订单{}已被其他线程处理完成，跳过推送", outTradeNo);
+                return;
+            } else {
+                log.error("订单更新失败，订单号：{}", outTradeNo);
+                throw new OrderBusinessException("订单状态更新失败");
+            }
+        }
+
+        log.info("订单状态更新成功，订单ID：{}，状态：待接单", ordersDB.getId());
+
+        // 6. 安全推送（仅当更新成功时）
+        Map<String, Object> map = new HashMap<>();
+        map.put("type", 1);
+        map.put("orderId", ordersDB.getId());
+        map.put("content", "订单号：" + outTradeNo);
+        map.put("timestamp", System.currentTimeMillis());
+
+        try {
+            webSocketServer.sendToAllClient(JSON.toJSONString(map));
+            log.info("WebSocket推送新订单消息成功 | 订单号: {}", outTradeNo);
+        } catch (Exception e) {
+            log.error("WebSocket推送失败 | 订单号: {}", outTradeNo, e);
+        }
     }
 }
